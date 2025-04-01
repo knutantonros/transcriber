@@ -9,6 +9,12 @@ from PIL import Image
 from docx import Document
 from pydub import AudioSegment
 
+# Fix for PyTorch custom classes issue with Streamlit
+# Add this at the very beginning of the file
+import sys
+if 'torch' in sys.modules:
+    import torch._classes  # This preloads the module to avoid issues with Streamlit's file watcher
+
 # Local imports
 from utils.audio_utils import convert_to_mono_and_compress
 from utils.transcribe import transcribe_with_kb_whisper
