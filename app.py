@@ -149,13 +149,25 @@ def main():
                     
                     # Transkriberar ljud med KB Whisper
                     with st.spinner('Transkriberar... Detta kan ta en stund beroende på längden på inspelningen...'):
+                        # Skapa progressionsbar
+                        progress_bar = st.progress(0)
+                        
+                        # Skapa callback-funktion för att uppdatera progressionsbaren
+                        def update_progress(progress_value):
+                            progress_bar.progress(progress_value)
+                        
+                        # Anropa transkriberingsfunktionen med progress_callback
                         st.session_state.transcribed = transcribe_with_kb_whisper(
                             st.session_state.file_name_converted, 
                             uploaded_file.name, 
                             model_map_transcribe_model[st.session_state["transcribe_model"]],
                             "sv",
-                            text_dir
+                            text_dir,
+                            update_progress
                         )
+                        
+                        # Sätt progressionsbaren till 100% när den är klar
+                        progress_bar.progress(1.0)
                         
                         st.success('Transkribering klar.')
                     
@@ -265,13 +277,25 @@ def main():
                     
                     # Transkribera
                     with st.spinner('Transkriberar... Detta kan ta en stund beroende på längden på inspelningen...'):
+                        # Skapa progressionsbar
+                        progress_bar = st.progress(0)
+                        
+                        # Skapa callback-funktion för att uppdatera progressionsbaren
+                        def update_progress(progress_value):
+                            progress_bar.progress(progress_value)
+                        
+                        # Anropa transkriberingsfunktionen med progress_callback
                         st.session_state.transcribed = transcribe_with_kb_whisper(
                             output_path, 
                             "inspelning.mp3", 
                             model_map_transcribe_model[st.session_state["transcribe_model"]],
                             "sv",
-                            text_dir
+                            text_dir,
+                            update_progress
                         )
+                        
+                        # Sätt progressionsbaren till 100% när den är klar
+                        progress_bar.progress(1.0)
                         
                         st.success('Transkribering klar.')
                     
