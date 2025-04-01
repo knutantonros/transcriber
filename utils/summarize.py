@@ -12,6 +12,13 @@ try:
 except LookupError:
     nltk.download('punkt', quiet=True)
 
+# Se till att språkspecifika data är tillgängliga
+for lang in ['english', 'swedish']:
+    try:
+        nltk.data.find(f'tokenizers/punkt/{lang}.pickle')
+    except LookupError:
+        nltk.download('punkt', quiet=True)
+
 def summarize_text_openai(text, summary_length="Medium", api_key=None):
     """
     Sammanfatta text med OpenAI
@@ -79,8 +86,13 @@ def summarize_text_openai(text, summary_length="Medium", api_key=None):
             return "**Det uppstod ett fel med din API-nyckel.** Kontrollera att nyckeln är korrekt och har tillräcklig kredit för att använda OpenAI:s API."
         else:
             # Fallback till extraktiv sammanfattning om API-anropet misslyckas
-            print(f"Fel vid sammanfattning med OpenAI: {e}")
-            return "**Ett fel uppstod vid sammanfattningen med OpenAI.** Använder enkel sammanfattning istället.\n\n" + extractive_summarize(text, summary_length)
+            st.warning(f"Fel vid sammanfattning med OpenAI: {e}. Använder enkel sammanfattning istället.")
+            try:
+                return extractive_summarize(text, summary_length)
+            except Exception as ex:
+                # Om även den enkla sammanfattningen misslyckas
+                st.error(f"Kunde inte skapa en sammanfattning: {ex}")
+                return "**Kunde inte skapa en sammanfattning.** Vänligen kontrollera texten eller försök igen senare."
 
 
 def extractive_summarize(text, summary_length="Medium"):
@@ -94,6 +106,9 @@ def extractive_summarize(text, summary_length="Medium"):
     Returnerar:
     str: Sammanfattad text
     """
+    if not text:
+        return ""
+        
     # Mappa summary_length till antal meningar
     length_map = {
         "Mycket kort": 1,
@@ -105,9 +120,22 @@ def extractive_summarize(text, summary_length="Medium"):
     
     num_sentences = length_map[summary_length]
     
-    # Dela upp texten i meningar
-    sentences = sent_tokenize(text)
-    
+    # Försök att dela upp texten i meningar med flera metoder
+    try:
+        # Försök först med NLTK's sent_tokenize för svenska
+        sentences = sent_tokenize(text, language='swedish')
+    except (LookupError, ImportError, ValueError) as e:
+        try:
+            # Fallback till engelsk tokenisering
+            sentences = sent_tokenize(text, language='english')
+        except (LookupError, ImportError, ValueError) as e:
+            # Enkel manuell tokenisering som sista utväg
+            sentences = [s.strip() for s in text.replace('!', '.').replace('?', '.').split('.') if s.strip()]
+            
+    # Om vi fortfarande inte har meningar, returnera texten som den är
+    if not sentences:
+        return text
+        
     # För korta texter, returnera originalet
     if len(sentences) <= num_sentences:
         return text
