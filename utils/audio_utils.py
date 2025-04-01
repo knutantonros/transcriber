@@ -55,6 +55,10 @@ def convert_to_mono_and_compress(uploaded_file, file_name, audio_dir="audio", ta
         file_path = os.path.join(audio_dir, f"{file_name}.mp3")
         try:
             audio.export(file_path, format="mp3", bitrate=f"{target_bitrate}")
+            
+            # Spara i session state för framtida användning
+            st.session_state[cache_key] = file_path
+            
             return file_path
         except Exception as e:
             st.error(f"Fel vid ljudexport: {e}")
