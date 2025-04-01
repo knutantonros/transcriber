@@ -32,7 +32,7 @@ if "transcribed" not in st.session_state:  # Transkriptionens resultat
 if "summarized" not in st.session_state:  # Sammanfattningens resultat
     st.session_state["summarized"] = None
 if "transcribe_model" not in st.session_state:  # Vilken Whisper modell som ska användas
-    st.session_state["transcribe_model"] = "KB Whisper Small"
+    st.session_state["transcribe_model"] = "KB Whisper Tiny"
 if "file_name_converted" not in st.session_state:  # Ljudfilens namn
     st.session_state["file_name_converted"] = None
 
@@ -78,19 +78,20 @@ def main():
     transcribe_model = st.sidebar.selectbox(
         "Välj transkriptionsmodell", 
         [
-            "KB Whisper Large", 
-            "KB Whisper Medium", 
-            "KB Whisper Small",
+            "KB Whisper Tiny",
             "KB Whisper Base",
-            "KB Whisper Tiny"
+            "KB Whisper Small",
+            "KB Whisper Medium", 
+            "KB Whisper Large"
         ],
         index=[
-            "KB Whisper Large", 
-            "KB Whisper Medium", 
-            "KB Whisper Small",
+            "KB Whisper Tiny",
             "KB Whisper Base",
-            "KB Whisper Tiny"
+            "KB Whisper Small",
+            "KB Whisper Medium", 
+            "KB Whisper Large"
         ].index(st.session_state["transcribe_model"]),
+        help="Mindre modeller (Tiny, Base) är snabbare men mindre exakta. Större modeller (Medium, Large) är långsammare men mer exakta."
     )
     
     model_map_transcribe_model = {
