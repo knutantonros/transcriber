@@ -63,6 +63,17 @@ def main():
     st.sidebar.header("Inställningar")
     st.sidebar.markdown("")
     
+    # Textfält för OpenAI API-nyckel
+    api_key = st.sidebar.text_input(
+        "Ange din OpenAI API-nyckel för sammanfattning",
+        type="password",
+        help="Krävs för sammanfattningsfunktionen. Din API-nyckel lagras endast i din aktiva session och skickas inte till någon server förutom OpenAI."
+    )
+    
+    # Spara API-nyckeln i sessionen
+    if api_key:
+        st.session_state["openai_api_key"] = api_key
+    
     # Dropdown-meny - välj Whisper-modell
     transcribe_model = st.sidebar.selectbox(
         "Välj transkriptionsmodell", 
@@ -110,6 +121,13 @@ def main():
     st.markdown("### Ladda upp ljudfiler och få transkription + sammanfattning")
     
     st.markdown(f"""**Vald modell:** {st.session_state["transcribe_model"]}""")
+    
+    # Visa information om API-nyckel
+    if not st.session_state.get("openai_api_key"):
+        st.info("📝 **Ingen OpenAI API-nyckel angiven.** Transkribering kommer att fungera, men för att få en sammanfattning behöver du ange en API-nyckel i sidofältet.")
+    else:
+        st.success("✅ **OpenAI API-nyckel är konfigurerad.** Sammanfattningsfunktionen är aktiverad.")
+    
     
     # SKAPA TVÅ FLIKAR FÖR FILUPPLADDNING OCH INSPELNING    
     tab1, tab2 = st.tabs(["Ladda upp fil", "Spela in ljud"])
@@ -175,7 +193,8 @@ def main():
                     with st.spinner('Sammanfattar transkriberingen...'):
                         st.session_state.summarized = summarize_text_openai(
                             st.session_state.transcribed, 
-                            summary_length
+                            summary_length,
+                            st.session_state.get("openai_api_key")
                         )
                         st.success('Sammanfattning klar.')
                         
@@ -303,7 +322,8 @@ def main():
                     with st.spinner('Sammanfattar transkriberingen...'):
                         st.session_state.summarized = summarize_text_openai(
                             st.session_state.transcribed, 
-                            summary_length
+                            summary_length,
+                            st.session_state.get("openai_api_key")
                         )
                         st.success('Sammanfattning klar.')
                     
