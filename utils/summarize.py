@@ -56,37 +56,61 @@ def summarize_text_openai(text, summary_length="Medium", api_key=None):
         return text
     
     try:
-        client = openai.OpenAI(api_key=api_key)
+        # Använd senaste versionen av OpenAI API med enbart nödvändiga parametrar
+        # Importera direkt här för att isolera eventuella fel
+        import openai
         
-        prompt = f"""
-        Nedan finns en text på svenska som ska sammanfattas. 
-        Skapa en {length_description} sammanfattning av texten på svenska.
-        Sammanfattningen ska fånga den viktigaste informationen och behålla textens ursprungliga ton.
-        
-        Text att sammanfatta:
-        {text}
-        """
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Du är en assistent som skapar högkvalitativa sammanfattningar på svenska."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.5,
-            max_tokens=500
-        )
-        
-        return response.choices[0].message.content.strip()
+        try:
+            # För OpenAI >= 1.0.0
+            client = openai.OpenAI(api_key=api_key)
+            
+            prompt = f"""
+            Nedan finns en text på svenska som ska sammanfattas. 
+            Skapa en {length_description} sammanfattning av texten på svenska.
+            Sammanfattningen ska fånga den viktigaste informationen och behålla textens ursprungliga ton.
+            
+            Text att sammanfatta:
+            {text}
+            """
+            
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "Du är en assistent som skapar högkvalitativa sammanfattningar på svenska."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.5,
+                max_tokens=500
+            )
+            
+            return response.choices[0].message.content.strip()
+            
+        except (AttributeError, TypeError) as e:
+            # För äldre versioner av OpenAI (< 1.0.0)
+            st.warning(f"Använder äldre version av OpenAI API: {e}")
+            
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "Du är en assistent som skapar högkvalitativa sammanfattningar på svenska."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.5,
+                max_tokens=500
+            )
+            
+            return response.choices[0].message.content.strip()
     
     except Exception as e:
         # Visa ett mer användarvänligt felmeddelande
         error_message = str(e)
-        if "auth" in error_message.lower() or "api key" in error_message.lower():
+        st.error(f"Fel vid sammanfattning med OpenAI: {e}")
+        
+        if "auth" in error_message.lower() or "api key" in error_message.lower() or "apikey" in error_message.lower():
             return "**Det uppstod ett fel med din API-nyckel.** Kontrollera att nyckeln är korrekt och har tillräcklig kredit för att använda OpenAI:s API."
         else:
             # Fallback till extraktiv sammanfattning om API-anropet misslyckas
-            st.warning(f"Fel vid sammanfattning med OpenAI: {e}. Använder enkel sammanfattning istället.")
+            st.warning("Använder enkel sammanfattning istället.")
             try:
                 return extractive_summarize(text, summary_length)
             except Exception as ex:
