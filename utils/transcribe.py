@@ -5,7 +5,7 @@ import torch
 from datasets import load_dataset
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 
-def transcribe_with_kb_whisper(file_name_converted, file_name, whisper_model, spoken_language="sv"):
+def transcribe_with_kb_whisper(file_name_converted, file_name, whisper_model, spoken_language="sv", text_dir="text"):
     """
     Transkribera ljud med KB-Whisper modeller
     
