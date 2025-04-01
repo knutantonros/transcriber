@@ -2,6 +2,7 @@
 import os
 import streamlit as st
 import hashlib
+import tempfile
 from PIL import Image
 
 # External imports
@@ -17,8 +18,13 @@ import config as c
 ### INITIAL VARIABLES
 
 # Skapar mappar om de inte existerar
-os.makedirs("audio", exist_ok=True)  # Där ljudfiler lagras för transkribering
-os.makedirs("text", exist_ok=True)   # Där transkriberade dokument lagras
+# Använd absoluta sökvägar för att undvika problem i olika miljöer
+base_dir = os.path.dirname(os.path.abspath(__file__))
+audio_dir = os.path.join(base_dir, "audio")
+text_dir = os.path.join(base_dir, "text")
+
+os.makedirs(audio_dir, exist_ok=True)  # Där ljudfiler lagras för transkribering
+os.makedirs(text_dir, exist_ok=True)   # Där transkriberade dokument lagras
 
 # Kontrollera och sätt standardvärden om de inte finns i session_state
 if "transcribed" not in st.session_state:  # Transkriptionens resultat
@@ -135,7 +141,10 @@ def main():
                 if st.button("Transkribera och sammanfatta"):
                     # Skickar ljud för konvertering till mp3 och komprimering
                     with st.spinner('Komprimerar ljudfil...'):
-                        st.session_state.file_name_converted = convert_to_mono_and_compress(uploaded_file, uploaded_file.name)
+                        st.session_state.file_name_converted = convert_to_mono_and_compress(uploaded_file, uploaded_file.name, audio_dir)
+                        if not st.session_state.file_name_converted:
+                            st.error("Kunde inte bearbeta ljudfilen. Kontrollera filformatet och att ffmpeg är installerat.")
+                            return
                         st.success('Ljudet komprimerat. Startar transkribering.')
                     
                     # Transkriberar ljud med KB Whisper
@@ -144,7 +153,8 @@ def main():
                             st.session_state.file_name_converted, 
                             uploaded_file.name, 
                             model_map_transcribe_model[st.session_state["transcribe_model"]],
-                            "sv"
+                            "sv",
+                            text_dir
                         )
                         
                         st.success('Transkribering klar.')
@@ -169,15 +179,15 @@ def main():
                 if st.session_state.summarized:
                     document.add_paragraph("\n\nSAMMANFATTNING:\n" + st.session_state.summarized)
                 
-                document.save('text/' + uploaded_file.name + '.docx')
+                document.save(os.path.join(text_dir, uploaded_file.name + '.docx'))
                 
                 # Spara textfil
-                with open('text/' + uploaded_file.name + '.txt', 'w', encoding='utf-8') as txt_file:
+                with open(os.path.join(text_dir, uploaded_file.name + '.txt'), 'w', encoding='utf-8') as txt_file:
                     txt_file.write(clean_text)
                     if st.session_state.summarized:
                         txt_file.write("\n\nSAMMANFATTNING:\n" + st.session_state.summarized)
                 
-                with open("text/" + uploaded_file.name + ".docx", "rb") as docx_file:
+                with open(os.path.join(text_dir, uploaded_file.name + ".docx"), "rb") as docx_file:
                     docx_bytes = docx_file.read()
                 
                 # Skapar kolumner för nedladdningsknappar
@@ -185,7 +195,7 @@ def main():
                 
                 # Text nedladdning
                 with col1:
-                    with open('text/' + uploaded_file.name + '.txt', "rb") as file_txt:
+                    with open(os.path.join(text_dir, uploaded_file.name + '.txt'), "rb") as file_txt:
                         st.download_button(
                             label = "Ladda ner som Text",
                             data = file_txt,
@@ -237,9 +247,21 @@ def main():
             if st.session_state.transcribed is None:
                 # Knapp för att starta bearbetning
                 if st.button("Bearbeta inspelning"):
-                    audio_file = AudioSegment.from_file(audio)
-                    output_path = "audio/inspelning.mp3"
-                    audio_file.export(output_path, format="mp3", bitrate="16k")
+                    # Skapa en temporär fil för att spara inspelningen
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as tmp_file:
+                        tmp_file.write(audio.getvalue())
+                        tmp_path = tmp_file.name
+                    
+                    try:
+                        audio_file = AudioSegment.from_file(tmp_path)
+                        output_path = os.path.join(audio_dir, "inspelning.mp3")
+                        audio_file.export(output_path, format="mp3", bitrate="16k")
+                        os.unlink(tmp_path)  # Ta bort temporär fil
+                    except Exception as e:
+                        st.error(f"Kunde inte bearbeta inspelningen: {e}")
+                        if os.path.exists(tmp_path):
+                            os.unlink(tmp_path)
+                        return
                     
                     # Transkribera
                     with st.spinner('Transkriberar... Detta kan ta en stund beroende på längden på inspelningen...'):
@@ -247,7 +269,8 @@ def main():
                             output_path, 
                             "inspelning.mp3", 
                             model_map_transcribe_model[st.session_state["transcribe_model"]],
-                            "sv"
+                            "sv",
+                            text_dir
                         )
                         
                         st.success('Transkribering klar.')
@@ -272,15 +295,15 @@ def main():
                 if st.session_state.summarized:
                     document.add_paragraph("\n\nSAMMANFATTNING:\n" + st.session_state.summarized)
                 
-                document.save('text/' + recording_name + '.docx')
+                document.save(os.path.join(text_dir, recording_name + '.docx'))
                 
                 # Spara textfil
-                with open('text/' + recording_name + '.txt', 'w', encoding='utf-8') as txt_file:
+                with open(os.path.join(text_dir, recording_name + '.txt'), 'w', encoding='utf-8') as txt_file:
                     txt_file.write(clean_text)
                     if st.session_state.summarized:
                         txt_file.write("\n\nSAMMANFATTNING:\n" + st.session_state.summarized)
                 
-                with open('text/' + recording_name + '.docx', "rb") as docx_file:
+                with open(os.path.join(text_dir, recording_name + '.docx'), "rb") as docx_file:
                     docx_bytes = docx_file.read()
                 
                 # Skapar kolumner för nedladdningsknappar
@@ -288,7 +311,7 @@ def main():
                 
                 # Text nedladdning
                 with col1:
-                    with open('text/' + recording_name + '.txt', "rb") as file_txt:
+                    with open(os.path.join(text_dir, recording_name + '.txt'), "rb") as file_txt:
                         st.download_button(
                             label = "Ladda ner som Text",
                             data = file_txt,
