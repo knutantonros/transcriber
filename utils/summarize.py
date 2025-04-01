@@ -2,6 +2,7 @@
 
 import os
 import nltk
+import streamlit as st
 import openai
 from nltk.tokenize import sent_tokenize
 
@@ -11,13 +12,14 @@ try:
 except LookupError:
     nltk.download('punkt', quiet=True)
 
-def summarize_text_openai(text, summary_length="Medium"):
+def summarize_text_openai(text, summary_length="Medium", api_key=None):
     """
     Sammanfatta text med OpenAI
     
     Parametrar:
     text (str): Texten som ska sammanfattas
     summary_length (str): Mycket kort, Kort, Medium, Lång, eller Mycket lång
+    api_key (str): OpenAI API-nyckel
     
     Returnerar:
     str: Sammanfattad text
@@ -25,12 +27,11 @@ def summarize_text_openai(text, summary_length="Medium"):
     if not text:
         return ""
     
-    # Kontrollera om OPENAI_API_KEY finns i miljövariablerna
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return "API-nyckel för OpenAI saknas. Sätt miljövariabeln OPENAI_API_KEY."
+    # Kontrollera om API-nyckel finns
+    api_key = api_key or st.session_state.get("openai_api_key")
     
-    openai.api_key = api_key
+    if not api_key:
+        return "**Ingen OpenAI API-nyckel tillhandahållen.** Ange din API-nyckel i sidofältet för att aktivera sammanfattningsfunktionen."
     
     # Definiera längdinställningar baserat på summary_length
     length_mappings = {
@@ -48,7 +49,7 @@ def summarize_text_openai(text, summary_length="Medium"):
         return text
     
     try:
-        client = openai.OpenAI()
+        client = openai.OpenAI(api_key=api_key)
         
         prompt = f"""
         Nedan finns en text på svenska som ska sammanfattas. 
@@ -72,9 +73,14 @@ def summarize_text_openai(text, summary_length="Medium"):
         return response.choices[0].message.content.strip()
     
     except Exception as e:
-        # Fallback till extraktiv sammanfattning om API-anropet misslyckas
-        print(f"Fel vid sammanfattning med OpenAI: {e}")
-        return extractive_summarize(text, summary_length)
+        # Visa ett mer användarvänligt felmeddelande
+        error_message = str(e)
+        if "auth" in error_message.lower() or "api key" in error_message.lower():
+            return "**Det uppstod ett fel med din API-nyckel.** Kontrollera att nyckeln är korrekt och har tillräcklig kredit för att använda OpenAI:s API."
+        else:
+            # Fallback till extraktiv sammanfattning om API-anropet misslyckas
+            print(f"Fel vid sammanfattning med OpenAI: {e}")
+            return "**Ett fel uppstod vid sammanfattningen med OpenAI.** Använder enkel sammanfattning istället.\n\n" + extractive_summarize(text, summary_length)
 
 
 def extractive_summarize(text, summary_length="Medium"):
