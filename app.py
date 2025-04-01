@@ -9,12 +9,6 @@ from PIL import Image
 from docx import Document
 from pydub import AudioSegment
 
-# Fix for PyTorch custom classes issue with Streamlit
-# Add this at the very beginning of the file
-import sys
-if 'torch' in sys.modules:
-    import torch._classes  # This preloads the module to avoid issues with Streamlit's file watcher
-
 # Local imports
 from utils.audio_utils import convert_to_mono_and_compress
 from utils.transcribe import transcribe_with_kb_whisper
@@ -23,66 +17,69 @@ import config as c
 
 ### INITIAL VARIABLES
 
-# Skapar mappar om de inte existerar
-# Använd absoluta sökvägar för att undvika problem i olika miljöer
+# Create directories if they don't exist
+# Use absolute paths to avoid issues in different environments
 base_dir = os.path.dirname(os.path.abspath(__file__))
 audio_dir = os.path.join(base_dir, "audio")
 text_dir = os.path.join(base_dir, "text")
 
-os.makedirs(audio_dir, exist_ok=True)  # Där ljudfiler lagras för transkribering
-os.makedirs(text_dir, exist_ok=True)   # Där transkriberade dokument lagras
+os.makedirs(audio_dir, exist_ok=True)  # Where audio files are stored for transcription
+os.makedirs(text_dir, exist_ok=True)   # Where transcribed documents are stored
 
-# Kontrollera och sätt standardvärden om de inte finns i session_state
-if "transcribed" not in st.session_state:  # Transkriptionens resultat
+# Check and set default values if they don't exist in session_state
+if "transcribed" not in st.session_state:  # Transcription result
     st.session_state["transcribed"] = None
-if "summarized" not in st.session_state:  # Sammanfattningens resultat
+if "summarized" not in st.session_state:  # Summarization result
     st.session_state["summarized"] = None
-if "transcribe_model" not in st.session_state:  # Vilken Whisper modell som ska användas
+if "transcribe_model" not in st.session_state:  # Which Whisper model to use
     st.session_state["transcribe_model"] = "KB Whisper Tiny"
-if "file_name_converted" not in st.session_state:  # Ljudfilens namn
+if "file_name_converted" not in st.session_state:  # Audio file name
     st.session_state["file_name_converted"] = None
 
-# Kontrollerar om uppladdad ljudfil har transkriberats
+# Check if uploaded audio file has been transcribed
 def compute_file_hash(uploaded_file):
-    """Beräkna MD5-hash för en fil för att kontrollera om den har ändrats"""
+    """Calculate MD5 hash for a file to check if it has changed"""
     hasher = hashlib.md5()
     
     for chunk in iter(lambda: uploaded_file.read(4096), b""):
         hasher.update(chunk)
-    uploaded_file.seek(0)  # Återställ filpekaren till början
+    uploaded_file.seek(0)  # Reset file pointer to beginning
     
     return hasher.hexdigest()
 
-### HUVUDAPP ###########################
+### MAIN APP ###########################
 
-# Sidkonfiguration
+# Page configuration
 st.set_page_config(
-    page_title="Ljudtranskribering & Sammanfattning",
+    page_title="Audio Transcription & Summarization",
     page_icon="🎙️",
     layout="centered",
     initial_sidebar_state="auto"
 )
 
+# Disable the PyTorch file watcher which is causing problems
+os.environ["STREAMLIT_GLOBAL_WATCHER_MAX_FILE_SIZE"] = "0"
+
 def main():
-    ### SIDOFÄLT
+    ### SIDEBAR
     
-    st.sidebar.header("Inställningar")
+    st.sidebar.header("Settings")
     st.sidebar.markdown("")
     
-    # Textfält för OpenAI API-nyckel
+    # Text input for OpenAI API key
     api_key = st.sidebar.text_input(
-        "Ange din OpenAI API-nyckel för sammanfattning",
+        "Enter your OpenAI API key for summarization",
         type="password",
-        help="Krävs för sammanfattningsfunktionen. Din API-nyckel lagras endast i din aktiva session och skickas inte till någon server förutom OpenAI."
+        help="Required for the summarization function. Your API key is only stored in your active session and is not sent to any server except OpenAI."
     )
     
-    # Spara API-nyckeln i sessionen
+    # Save API key in session
     if api_key:
         st.session_state["openai_api_key"] = api_key
     
-    # Dropdown-meny - välj Whisper-modell
+    # Dropdown menu - select Whisper model
     transcribe_model = st.sidebar.selectbox(
-        "Välj transkriptionsmodell", 
+        "Select transcription model", 
         [
             "KB Whisper Tiny",
             "KB Whisper Base",
@@ -97,7 +94,7 @@ def main():
             "KB Whisper Medium", 
             "KB Whisper Large"
         ].index(st.session_state["transcribe_model"]),
-        help="Mindre modeller (Tiny, Base) är snabbare men mindre exakta. Större modeller (Medium, Large) är långsammare men mer exakta."
+        help="Smaller models (Tiny, Base) are faster but less accurate. Larger models (Medium, Large) are slower but more accurate."
     )
     
     model_map_transcribe_model = {
@@ -108,50 +105,50 @@ def main():
         "KB Whisper Tiny": "kb-whisper-tiny"
     }
     
-    # Val för sammanfattningslängd
+    # Options for summary length
     summary_length = st.sidebar.select_slider(
-        "Sammanfattningslängd",
-        options=["Mycket kort", "Kort", "Medium", "Lång", "Mycket lång"],
+        "Summary length",
+        options=["Very short", "Short", "Medium", "Long", "Very long"],
         value="Medium"
     )
     
-    # Uppdatera session_state
+    # Update session_state
     st.session_state["transcribe_model"] = transcribe_model
     
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"Version: {c.app_version}")
     
-    ### HUVUDSIDA
+    ### MAIN PAGE
     
-    # Titel
-    st.title("Ljudtranskribering & Sammanfattning")
-    st.markdown("### Ladda upp ljudfiler och få transkription + sammanfattning")
+    # Title
+    st.title("Audio Transcription & Summarization")
+    st.markdown("### Upload audio files and get transcription + summary")
     
-    st.markdown(f"""**Vald modell:** {st.session_state["transcribe_model"]}""")
+    st.markdown(f"""**Selected model:** {st.session_state["transcribe_model"]}""")
     
-    # Visa information om API-nyckel
+    # Show API key information
     if not st.session_state.get("openai_api_key"):
-        st.info("📝 **Ingen OpenAI API-nyckel angiven.** Transkribering kommer att fungera, men för att få en sammanfattning behöver du ange en API-nyckel i sidofältet.")
+        st.info("📝 **No OpenAI API key provided.** Transcription will work, but to get a summary you need to enter an API key in the sidebar.")
     else:
-        st.success("✅ **OpenAI API-nyckel är konfigurerad.** Sammanfattningsfunktionen är aktiverad.")
+        st.success("✅ **OpenAI API key is configured.** Summarization function is enabled.")
     
     
-    # SKAPA TVÅ FLIKAR FÖR FILUPPLADDNING OCH INSPELNING    
-    tab1, tab2 = st.tabs(["Ladda upp fil", "Spela in ljud"])
+    # CREATE TWO TABS FOR FILE UPLOAD AND RECORDING    
+    tab1, tab2 = st.tabs(["Upload file", "Record audio"])
     
-    # FILUPPLADDARE
+    # FILE UPLOADER
     with tab1:
         uploaded_file = st.file_uploader(
-            "Ladda upp din ljud- eller videofil",
+            "Upload your audio or video file",
             type=["mp3", "wav", "flac", "mp4", "m4a", "aifc"],
-            help="Max 2GB filstorlek",
+            help="Max 2GB file size",
         )
         
         if uploaded_file:
-            # Kontrollerar om uppladdad fil redan har transkriberats
+            # Check if uploaded file has already been transcribed
             current_file_hash = compute_file_hash(uploaded_file)
             
-            # Om uppladdad fils hash är annorlunda än den i session state, återställ state
+            # If uploaded file hash is different than the one in session state, reset state
             if "file_hash" not in st.session_state or st.session_state.file_hash != current_file_hash:
                 st.session_state.file_hash = current_file_hash
                 
@@ -160,28 +157,28 @@ def main():
                 if "summarized" in st.session_state:
                     st.session_state.summarized = None
             
-            # Om ljudet inte har transkriberats
+            # If audio has not been transcribed
             if st.session_state.transcribed is None:
-                # Knapp för att starta bearbetning
-                if st.button("Transkribera och sammanfatta"):
-                    # Skickar ljud för konvertering till mp3 och komprimering
-                    with st.spinner('Komprimerar ljudfil...'):
+                # Button to start processing
+                if st.button("Transcribe and summarize"):
+                    # Send audio for conversion to mp3 and compression
+                    with st.spinner('Compressing audio file...'):
                         st.session_state.file_name_converted = convert_to_mono_and_compress(uploaded_file, uploaded_file.name, audio_dir)
                         if not st.session_state.file_name_converted:
-                            st.error("Kunde inte bearbeta ljudfilen. Kontrollera filformatet och att ffmpeg är installerat.")
+                            st.error("Could not process the audio file. Check the file format and that ffmpeg is installed.")
                             return
-                        st.success('Ljudet komprimerat. Startar transkribering.')
+                        st.success('Audio compressed. Starting transcription.')
                     
-                    # Transkriberar ljud med KB Whisper
-                    with st.spinner('Transkriberar... Detta kan ta en stund beroende på längden på inspelningen...'):
-                        # Skapa progressionsbar
+                    # Transcribe audio with KB Whisper
+                    with st.spinner('Transcribing... This may take a while depending on the length of the recording...'):
+                        # Create progress bar
                         progress_bar = st.progress(0)
                         
-                        # Skapa callback-funktion för att uppdatera progressionsbaren
+                        # Create callback function to update progress bar
                         def update_progress(progress_value):
                             progress_bar.progress(progress_value)
                         
-                        # Anropa transkriberingsfunktionen med progress_callback
+                        # Call the transcription function with progress_callback
                         st.session_state.transcribed = transcribe_with_kb_whisper(
                             st.session_state.file_name_converted, 
                             uploaded_file.name, 
@@ -191,88 +188,88 @@ def main():
                             update_progress
                         )
                         
-                        # Sätt progressionsbaren till 100% när den är klar
+                        # Set progress bar to 100% when done
                         progress_bar.progress(1.0)
                         
-                        st.success('Transkribering klar.')
+                        st.success('Transcription complete.')
                     
-                    # Sammanfatta den transkriberade texten med OpenAI
-                    with st.spinner('Sammanfattar transkriberingen...'):
+                    # Summarize the transcribed text with OpenAI
+                    with st.spinner('Summarizing the transcription...'):
                         st.session_state.summarized = summarize_text_openai(
                             st.session_state.transcribed, 
                             summary_length,
                             st.session_state.get("openai_api_key")
                         )
-                        st.success('Sammanfattning klar.')
+                        st.success('Summarization complete.')
                         
                     st.balloons()
             
-            # Om vi har transkriberad och sammanfattad text
+            # If we have transcribed and summarized text
             if st.session_state.transcribed is not None:
-                # Skapar ett Word-dokument med den transkriberade texten
+                # Create a Word document with the transcribed text
                 document = Document()
                 clean_text = st.session_state.transcribed.encode('utf-8', errors='replace').decode('utf-8')
                 document.add_paragraph(clean_text)
                 
                 if st.session_state.summarized:
-                    document.add_paragraph("\n\nSAMMANFATTNING:\n" + st.session_state.summarized)
+                    document.add_paragraph("\n\nSUMMARY:\n" + st.session_state.summarized)
                 
                 document.save(os.path.join(text_dir, uploaded_file.name + '.docx'))
                 
-                # Spara textfil
+                # Save text file
                 with open(os.path.join(text_dir, uploaded_file.name + '.txt'), 'w', encoding='utf-8') as txt_file:
                     txt_file.write(clean_text)
                     if st.session_state.summarized:
-                        txt_file.write("\n\nSAMMANFATTNING:\n" + st.session_state.summarized)
+                        txt_file.write("\n\nSUMMARY:\n" + st.session_state.summarized)
                 
                 with open(os.path.join(text_dir, uploaded_file.name + ".docx"), "rb") as docx_file:
                     docx_bytes = docx_file.read()
                 
-                # Skapar kolumner för nedladdningsknappar
+                # Create columns for download buttons
                 col1, col2 = st.columns(2)
                 
-                # Text nedladdning
+                # Text download
                 with col1:
                     with open(os.path.join(text_dir, uploaded_file.name + '.txt'), "rb") as file_txt:
                         st.download_button(
-                            label = "Ladda ner som Text",
+                            label = "Download as Text",
                             data = file_txt,
                             file_name = uploaded_file.name + '.txt',
                             mime = 'text/plain',
                         )
                 
-                # Word nedladdning
+                # Word download
                 with col2:
                     st.download_button(
-                        label = "Ladda ner som Word",
+                        label = "Download as Word",
                         data = docx_bytes,
                         file_name = uploaded_file.name + '.docx',
                         mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                     )
                 
-                # Visa ljudet
-                st.markdown("### Ljudfil")
+                # Show audio
+                st.markdown("### Audio File")
                 if st.session_state.file_name_converted is not None:
                     st.audio(st.session_state.file_name_converted, format='audio/wav')
                 
-                # Visa transkriberingen
-                st.markdown("### Transkribering")
+                # Show transcription
+                st.markdown("### Transcription")
                 st.write(st.session_state.transcribed)
                 
-                # Visa sammanfattningen
+                # Show summary
                 if st.session_state.summarized:
-                    st.markdown("### Sammanfattning")
+                    st.markdown("### Summary")
                     st.write(st.session_state.summarized)
     
-    # LJUDINSPELARE
+    # AUDIO RECORDER
     with tab2:
-        audio = st.audio_input("Spela in ljud")
+        audio = st.audio_input("Record audio")
         
         if audio:
-            # Öppna den sparade ljudfilen och beräkna dess hash
+            # Open the saved audio file and calculate its hash
             current_file_hash = compute_file_hash(audio)
             
-            # Om uppladdad fils hash är annorlunda än den i session state, återställ state
+            # If uploaded file hash is different than the one in session state, reset state
             if "file_hash" not in st.session_state or st.session_state.file_hash != current_file_hash:
                 st.session_state.file_hash = current_file_hash
                 
@@ -281,111 +278,111 @@ def main():
                 if "summarized" in st.session_state:
                     st.session_state.summarized = None
             
-            # Om ljudet inte har transkriberats
+            # If audio has not been transcribed
             if st.session_state.transcribed is None:
-                # Knapp för att starta bearbetning
-                if st.button("Bearbeta inspelning"):
-                    # Skapa en temporär fil för att spara inspelningen
+                # Button to start processing
+                if st.button("Process recording"):
+                    # Create a temporary file to save the recording
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as tmp_file:
                         tmp_file.write(audio.getvalue())
                         tmp_path = tmp_file.name
                     
                     try:
                         audio_file = AudioSegment.from_file(tmp_path)
-                        output_path = os.path.join(audio_dir, "inspelning.mp3")
+                        output_path = os.path.join(audio_dir, "recording.mp3")
                         audio_file.export(output_path, format="mp3", bitrate="16k")
-                        os.unlink(tmp_path)  # Ta bort temporär fil
+                        os.unlink(tmp_path)  # Remove temporary file
                     except Exception as e:
-                        st.error(f"Kunde inte bearbeta inspelningen: {e}")
+                        st.error(f"Could not process the recording: {e}")
                         if os.path.exists(tmp_path):
                             os.unlink(tmp_path)
                         return
                     
-                    # Transkribera
-                    with st.spinner('Transkriberar... Detta kan ta en stund beroende på längden på inspelningen...'):
-                        # Skapa progressionsbar
+                    # Transcribe
+                    with st.spinner('Transcribing... This may take a while depending on the length of the recording...'):
+                        # Create progress bar
                         progress_bar = st.progress(0)
                         
-                        # Skapa callback-funktion för att uppdatera progressionsbaren
+                        # Create callback function to update progress bar
                         def update_progress(progress_value):
                             progress_bar.progress(progress_value)
                         
-                        # Anropa transkriberingsfunktionen med progress_callback
+                        # Call the transcription function with progress_callback
                         st.session_state.transcribed = transcribe_with_kb_whisper(
                             output_path, 
-                            "inspelning.mp3", 
+                            "recording.mp3", 
                             model_map_transcribe_model[st.session_state["transcribe_model"]],
                             "sv",
                             text_dir,
                             update_progress
                         )
                         
-                        # Sätt progressionsbaren till 100% när den är klar
+                        # Set progress bar to 100% when done
                         progress_bar.progress(1.0)
                         
-                        st.success('Transkribering klar.')
+                        st.success('Transcription complete.')
                     
-                    # Sammanfatta
-                    with st.spinner('Sammanfattar transkriberingen...'):
+                    # Summarize
+                    with st.spinner('Summarizing the transcription...'):
                         st.session_state.summarized = summarize_text_openai(
                             st.session_state.transcribed, 
                             summary_length,
                             st.session_state.get("openai_api_key")
                         )
-                        st.success('Sammanfattning klar.')
+                        st.success('Summarization complete.')
                     
                     st.balloons()
             
-            # Om vi har transkriberad och sammanfattad text
+            # If we have transcribed and summarized text
             if st.session_state.transcribed is not None:
-                recording_name = "inspelning.mp3"
+                recording_name = "recording.mp3"
                 document = Document()
                 clean_text = st.session_state.transcribed.encode('utf-8', errors='replace').decode('utf-8')
                 document.add_paragraph(clean_text)
                 
                 if st.session_state.summarized:
-                    document.add_paragraph("\n\nSAMMANFATTNING:\n" + st.session_state.summarized)
+                    document.add_paragraph("\n\nSUMMARY:\n" + st.session_state.summarized)
                 
                 document.save(os.path.join(text_dir, recording_name + '.docx'))
                 
-                # Spara textfil
+                # Save text file
                 with open(os.path.join(text_dir, recording_name + '.txt'), 'w', encoding='utf-8') as txt_file:
                     txt_file.write(clean_text)
                     if st.session_state.summarized:
-                        txt_file.write("\n\nSAMMANFATTNING:\n" + st.session_state.summarized)
+                        txt_file.write("\n\nSUMMARY:\n" + st.session_state.summarized)
                 
                 with open(os.path.join(text_dir, recording_name + '.docx'), "rb") as docx_file:
                     docx_bytes = docx_file.read()
                 
-                # Skapar kolumner för nedladdningsknappar
+                # Create columns for download buttons
                 col1, col2 = st.columns(2)
                 
-                # Text nedladdning
+                # Text download
                 with col1:
                     with open(os.path.join(text_dir, recording_name + '.txt'), "rb") as file_txt:
                         st.download_button(
-                            label = "Ladda ner som Text",
+                            label = "Download as Text",
                             data = file_txt,
                             file_name = recording_name + '.txt',
                             mime = 'text/plain',
                         )
                 
-                # Word nedladdning
+                # Word download
                 with col2:
                     st.download_button(
-                        label = "Ladda ner som Word",
+                        label = "Download as Word",
                         data = docx_bytes,
                         file_name = recording_name + '.docx',
                         mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                     )
                 
-                # Visa transkriberingen
-                st.markdown("### Transkribering")
+                # Show transcription
+                st.markdown("### Transcription")
                 st.write(st.session_state.transcribed)
                 
-                # Visa sammanfattningen
+                # Show summary
                 if st.session_state.summarized:
-                    st.markdown("### Sammanfattning")
+                    st.markdown("### Summary")
                     st.write(st.session_state.summarized)
 
 if __name__ == "__main__":
