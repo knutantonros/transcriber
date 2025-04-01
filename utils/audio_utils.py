@@ -2,8 +2,9 @@
 
 import os
 import streamlit as st
-from pydub import AudioSegment
 import tempfile
+import hashlib
+from pydub import AudioSegment
 
 # Konverterar och komprimerar ljud- eller videofil till mp3 och en mer hanterbar storlek
 def convert_to_mono_and_compress(uploaded_file, file_name, audio_dir="audio", target_size_MB=22):
@@ -13,6 +14,7 @@ def convert_to_mono_and_compress(uploaded_file, file_name, audio_dir="audio", ta
     Parametrar:
     uploaded_file (UploadedFile): Det uppladdade filobjektet från Streamlit
     file_name (str): Filens namn
+    audio_dir (str): Katalog för ljudfiler
     target_size_MB (int): Målstorlek i MB för den komprimerade filen
     
     Returnerar:
@@ -23,9 +25,21 @@ def convert_to_mono_and_compress(uploaded_file, file_name, audio_dir="audio", ta
     os.makedirs(audio_dir, exist_ok=True)
     
     try:
+        # Beräkna en hash för filen för cachning
+        file_content = uploaded_file.getvalue()
+        file_hash = hashlib.md5(file_content).hexdigest()
+        cache_key = f"converted_audio_{file_hash}"
+        
+        # Kontrollera om filen redan har bearbetats
+        if cache_key in st.session_state:
+            # Återanvänd tidigare konverterad fil om den fortfarande existerar
+            cached_path = st.session_state[cache_key]
+            if os.path.exists(cached_path):
+                return cached_path
+        
         # Spara den uppladdade filen temporärt för att säkerställa att ffmpeg kan komma åt den
         with tempfile.NamedTemporaryFile(delete=False, suffix='.' + uploaded_file.name.split('.')[-1]) as tmp_file:
-            tmp_file.write(uploaded_file.getvalue())
+            tmp_file.write(file_content)
             tmp_path = tmp_file.name
         
         # Ladda ljudfilen från den temporära filen
