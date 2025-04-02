@@ -1,0 +1,16 @@
+.git
+.gitignore
+.DS_Store
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+venv/
+ENV/
+audio/*
+text/*
+cache/*
+Dockerfile
+.dockerignore
+*.md
