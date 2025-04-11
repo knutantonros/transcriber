@@ -5,6 +5,7 @@ import nltk
 import streamlit as st
 import openai
 from nltk.tokenize import sent_tokenize
+from azure_utils import get_openai_api_key
 
 # Ladda ner NLTK-resurser (om de inte redan är nedladdade)
 try:
@@ -35,7 +36,7 @@ def summarize_text_openai(text, summary_length="Medium", api_key=None):
         return ""
     
     # Kontrollera om API-nyckel finns
-    api_key = api_key or st.session_state.get("openai_api_key")
+    api_key = api_key or get_openai_api_key() or st.session_state.get("openai_api_key")
     
     if not api_key:
         return "**Ingen OpenAI API-nyckel tillhandahållen.** Ange din API-nyckel i sidofältet för att aktivera sammanfattningsfunktionen."
