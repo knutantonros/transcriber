@@ -1,1 +1,71 @@
+name: Deploy to Azure Web App
 
+on:
+  push:
+    branches:
+      - main  # or master, depending on your default branch
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.10'
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Create startup command file
+      run: |
+        echo "gunicorn --bind=0.0.0.0 --timeout 600 app:app" > startup.txt
+        
+    - name: Create gunicorn wrapper for Streamlit
+      run: |
+        cat > app.py << 'EOL'
+        import os
+        import subprocess
+        import sys
+        from flask import Flask, Response
+
+        app = Flask(__name__)
+
+        @app.route('/')
+        def index():
+            process = subprocess.Popen(
+                ['streamlit', 'run', 'app.py', '--server.port=8501', '--server.address=127.0.0.1'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            return Response(
+                "Streamlit app is running. Please navigate to the appropriate URL.",
+                mimetype='text/plain'
+            )
+
+        if __name__ == '__main__':
+            app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8000)))
+        EOL
+        mv app.py flask_app.py
+        
+    - name: Update requirements.txt for web server
+      run: |
+        echo "gunicorn==20.1.0" >> requirements.txt
+        echo "flask==2.2.3" >> requirements.txt
+    
+    - name: Deploy to Azure Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: YOUR_APP_NAME_HERE  # Replace with your app name
+        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+        package: .
